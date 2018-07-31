@@ -1,0 +1,345 @@
+<div id="app" style="margin-top: 30px;"  >
+    <el-row>
+        <el-col :span="4">&nbsp;</el-col>
+        <el-col :span="15">
+            <el-form ref="form" :model="form" :rules="rules" label-width="170px" >
+                <el-form-item label="组织名称" >
+                    <el-cascader
+                            :options="selectOrg"
+                            @active-item-change="orgItemChange($event)"
+                            @change="orgChange"
+                            :props="orgProps"
+                            :show-all-levels="false"
+                            v-model="form.mtFullCode"
+                    ></el-cascader>
+                </el-form-item>
+
+                <el-form-item label="议程（非必填）">
+                    <el-input
+                            type="textarea"
+                            :rows="3"
+                            placeholder="请输入议程"
+                            v-model="form.content">
+                    </el-input>
+                </el-form-item>
+                <el-form-item label="参考资料（非必填）">
+                    <el-upload
+                            :action="uploadCom.action"
+                            :before-upload="handleFileBeforeUpload"
+                            :accept="uploadCom.accept"
+                            :data="uploadCom.uploadParams"
+                            :file-list="uploadCom.fileListArr"
+                            list-type="picture-card"
+                            :on-preview="handlePictureCardPreview"
+                            :on-success="handleFileSuccess"
+                            :on-remove="handleFileRemove"
+                            :limit="uploadCom.fileNum"
+                            :on-exceed="handleExceed">
+                        <i class="el-icon-plus"></i>
+                    </el-upload>
+                    <el-dialog :visible.sync="dialogVisible">
+                        <img width="100%" :src="dialogImageUrl" alt="">
+                    </el-dialog>
+                </el-form-item>
+                <el-form-item>
+                    <el-button @click="handleClose">取消</el-button>
+                    <el-button type="primary" @click="onSubmit">确定</el-button>
+                </el-form-item>
+            </el-form>
+        </el-col>
+    </el-row>
+</div>
+<script>
+
+    //上传组件的封装
+    var fileUploader = {
+        g_object_name_type : '',
+        g_object_name : '',
+        filename : '',
+        suffix : '',
+        uploadParams: {},
+        showUrl: '',
+
+        beforeUpload: function(file, type = 'random_name') {
+            this.filename = file.name;
+            this.g_object_name_type = type;
+            var that = this;
+            $.ajax({
+                url:"/oss-upload-js/php/get.php",
+                type:"get",
+                dataType:"json",
+                async: false,
+                success:function (res) {
+                    vm.uploadCom.uploadParams.key = that.get_key(res.dir);
+                    vm.uploadCom.uploadParams.policy = res.policy;
+                    vm.uploadCom.uploadParams.OSSAccessKeyId = res.accessid;
+                    vm.uploadCom.uploadParams.success_action_status = 200;
+                    vm.uploadCom.uploadParams.signature = res.signature;
+                    that.showUrl = res.showHost;
+                }
+            });
+            return this.uploadParams;
+        },
+
+        get_key : function (dir) {
+            var that = this;
+            var get_suffix = function () {
+                var pos = that.filename.lastIndexOf('.');
+                if (pos !== -1) {
+                    that.suffix = that.filename.substring(pos)
+                };
+                return that.suffix;
+            };
+            var calculate_object_name = function () {
+                var random_string = function(len) {
+                    len = len || 32;
+                    var chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678';
+                    var maxPos = chars.length;
+                    var pwd = '';
+                    for (i = 0; i < len; i++) {
+                        pwd += chars.charAt(Math.floor(Math.random() * maxPos));
+                    }
+                    return pwd;
+                };
+                if (that.g_object_name_type === 'local_name')
+                {
+                    that.g_object_name += "${filename}"
+                }
+                else if (that.g_object_name_type === 'random_name')
+                {
+                    that.g_object_name += random_string(10) + that.suffix;
+                }
+            };
+            that.g_object_name = dir;
+            if (that.filename != '') {
+                get_suffix();
+                calculate_object_name();
+            }
+            return that.g_object_name;
+        },
+        get_uploaded_object_name : function () {
+            var that = this;
+            if (that.g_object_name_type === 'local_name') {
+                var tmp_name = that.g_object_name;
+                tmp_name = tmp_name.replace("${filename}", that.filename);
+                return that.showUrl + '/' + tmp_name;
+            } else if(that.g_object_name_type === 'random_name') {
+                return that.showUrl + '/' + that.g_object_name;
+            }
+        }
+    };
+
+    var vm = new Vue({
+        el: '#app',
+        data:function() {
+            return {
+                m_name: '',//创建人
+                create_date: '',//创建时间
+                memberMultipleSelection:[], //选中人
+                joinUserIdsArr:[],
+
+                datumType:'1',  //参考资料类型  1:图片,2:pdf,4:word;5:ppt;6:excel
+                mId: '',
+                orgId: '',
+                mtName: '',
+                mtCode: '',
+                form: {     //表单数据对象， 与显式表单相对应, 不在页面交互且只有当前页面上使用的数据没有必要出现在data中
+                    title: '',
+                    orgName: '',
+                    startDts: '',
+                    mtFullCode: [], //类型
+                    formType: '',   //形式
+                    place: '',
+                    content: '',
+                },
+
+                uploadCom: {
+                    action: 'https://upload.17shanyuan.com',
+                    accept: 'image/*',
+                    fileListArr:[],
+                    fileNum:1,
+                    uploadParams: {},
+                    isLt2M : 10,
+                },
+
+                rules: {
+                    inst_code: [
+                        { required: true, message: '请输入机构号', trigger: 'blur' },
+                        {pattern: /(^\d{3}(\.\d{3}){1,}$)/, message: '机构号填写有误，请重新输入', trigger: 'blur'}
+                    ],
+                    inst_type: [
+                        { required: true, message: '请选择机构标识', trigger: 'change' },
+                    ]
+                },
+                dialogImageUrl: '',     //图片
+                dialogVisible: false,
+
+                memberData: [], //人员选择
+                dialogTableVisible: false,
+                //选择组织绑定
+                selectOrg: [],
+                orgProps: {
+                    label: 'orgName',
+                    value: 'orgId',
+                },
+            }
+        },
+        created: function () {
+            var that = this;
+            $.ajax({
+                url:"<?= Yii::$app->params['apiJavaServiceUrl']?>" + '/meeting/meeting-org-list',
+                type:"get",
+                //data: {orgId: "<?= Yii::$app->session->get("login-user-orgbackend\controllers\SiteController::actionLogin")?>"},
+                data: {orgId: "0",},
+                dataType:"json",
+                success:function (res) {
+                    if (res.code == 200) {
+                        //console.log(res.data.pmOrgBos);
+                        var options = res.data.pmOrgBos;
+                        for(var i = 0; i < options.length; i++) {
+                            if (options[i].isChildOrg !== 0)
+                                options[i].children = [];
+                        }
+                        that.selectOrg = options;
+                    }
+                }
+            });
+        },
+        computed: {
+
+        },
+        methods: {
+            //包含验证的数据提交方法
+            onSubmit: function () {
+                var that = this;
+                that.$refs['form'].validate( function (valid) {
+                    if (!valid)
+                        return;
+                    var params = {
+                        mId: that.mId,
+                        orgId: that.orgId,
+                        mtName: that.mtName,
+                        weekend: '',
+                        joinUserIds:that.joinUserIdsArr.join(','),
+                        datumUrl:that.fileListArr.join(','),
+                    }
+                    that.extendObj(params, that.form);
+
+                });
+            },
+            //页面刷新
+            handleClose(done) {
+                window.parent.location.reload();
+            },
+            //上传组件相关
+            handleFileRemove(file, fileList) {
+                /*document.getElementsByClassName('el-upload--picture-card')[0].style.display = ''*/
+            },
+            handleFileBeforeUpload(file) {
+                //这里写上传大小以及上传类型的限制。
+                var isLt2T = 'image' === file.type.substring(0 ,file.type.indexOf('/'));
+                var isLt2M = file.size / 1024 /1024 <= this.uploadCom.isLt2M;
+                if(!isLt2M) {
+                    this.$notify({
+                        message: '上传文件过大!',
+                        type: 'warning'
+                    });
+                    return false;
+                }
+                if (!isLt2T) {
+                    this.$notify({
+                        message: '文件格式不匹配!',
+                        type: 'warning'
+                    });
+                    return false;
+                }
+                fileUploader.beforeUpload(file);
+            },
+            handleFileSuccess(response, file, fileList) {
+                var aa = fileUploader.get_uploaded_object_name();
+                file.url = aa;
+                /*if(fileList.length >= this.uploadCom.fileNum) {
+                    document.getElementsByClassName('el-upload--picture-card')[0].style.display = 'none'
+                }*/
+            },
+            handleExceed(files, fileList) {
+                this.$notify({
+                    message: '限制最大上传数为' + this.uploadCom.fileNum,
+                    type: 'warning'
+                });
+            },
+            handlePictureCardPreview(file) {
+                this.dialogImageUrl = file.url;
+                console.log(file.url);
+                this.dialogVisible = true;
+            },
+
+
+            //复选框，无限级联动
+            orgItemChange(val) {
+                var caseCardObj = this.getCascaderObj(val[val.length - 1], this.selectOrg);
+                if (caseCardObj.hasOwnProperty('children')) {   //如果有子项
+                    var that = this;
+                    $.ajax({
+                        url:"<?= Yii::$app->params['apiJavaServiceUrl']?>" + '/meeting/meeting-org-list',
+                        type:"get",
+                        data: {orgId: val[0],},
+                        dataType:"json",
+                        success:function (res) {
+                            if (res.code == 200) {
+                                var options = res.data.pmOrgBos;
+                                for(var i = 0; i < options.length; i++) {
+                                    if (options[i].isChildOrg !== 0)
+                                        options[i].children = [];
+                                }
+                                caseCardObj.children = options;
+                            }
+                        }
+                    });
+                }
+            },
+            orgChange(val) {
+                var caseCardObj = this.getCascaderObj(val[val.length - 1], this.selectOrg);
+                this.mtName = caseCardObj.orgName;
+                this.mtCode = caseCardObj.orgId;
+                //请求选择参与人列表
+                var that = this;
+                $.ajax({
+                    url:"<?= Yii::$app->params['apiJavaServiceUrl']?>" + '/meeting/member-list',
+                    type:"get",
+                    data: {orgId: that.mtCode,},
+                    dataType:"json",
+                    success:function (res) {
+                        if (res.code == 200) {
+                            that.memberData = res.data.orgMemberBos
+                        }
+                    }
+                });
+            },
+            //合并两个对象
+            extendObj(target, source) {
+                for (var obj in source) {
+                    target[obj] = source[obj];
+                }
+            },
+            //递归获取cascader对象
+            getCascaderObj(val, opt) {
+                for (var j = 0; j < opt.length; j++) {
+                    if (opt[j].orgId === val)
+                        return opt[j];
+                    if (opt[j].hasOwnProperty('children') && opt[j].children.length > 0) {
+                        return this.getCascaderObj(val, opt[j].children)
+                    }
+                }
+                return null;
+            },
+
+            //获取星期
+            getWeek(date){
+                var tmp = ['周日','周一','周二','周三','周四','周五','周六'];
+                return tmp[new Date(date).getDay()]
+            },
+
+        }
+    })
+</script>
