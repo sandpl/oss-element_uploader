@@ -132,6 +132,35 @@
     var vm = new Vue({
         el: '#app',
         data:function() {
+            
+           //时间控制器， 结束时间大于开始时间， 最小选择时间为当天
+            pickerOptions0: {
+                    disabledDate: (time) => {
+                        var inDate = this.form1.endDateTime;
+                        if (inDate !== '' && inDate !== null) {
+                            var year = parseInt(inDate.substr(0, 4));
+                            var mouth = parseInt(inDate.substr(6, 2)) - 1;
+                            var date = parseInt(inDate.substr(8, 2));
+                            return time.getTime() > (new Date(year, mouth, date)).getTime() || time.getTime() < Date.now() - 8.64e7;
+                        } else {
+                            return time.getTime() < Date.now() - 8.64e7;
+                        }
+
+                    }
+                },
+                pickerOptions1: {
+                    disabledDate: (time) => {
+                        var inDate = this.form1.startDateTime;
+                        if (inDate !== '' && inDate !== null) {
+                            var year = parseInt(inDate.substr(0, 4));
+                            var mouth = parseInt(inDate.substr(6, 2)) - 1;
+                            var date = parseInt(inDate.substr(8, 2));
+                            return time.getTime() < (new Date(year, mouth, date)).getTime() || time.getTime() < Date.now() - 8.64e7;
+                        } else {
+                            return time.getTime() < Date.now() - 8.64e7;
+                        }
+                    }
+                },
             return {
                 m_name: '',//创建人
                 create_date: '',//创建时间
@@ -342,4 +371,5 @@
 
         }
     })
+    
 </script>
